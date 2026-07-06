@@ -5,8 +5,8 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-let butterflies = [];
-let mouse = { x: -1000, y: -1000, radius: 140 };
+const butterflies = [];
+const mouse = { x: -1000, y: -1000, radius: 140 };
 
 window.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; });
 window.addEventListener('mouseout', () => { mouse.x = -1000; mouse.y = -1000; });
@@ -56,7 +56,7 @@ for (let i = 0; i < 160; i++) { butterflies.push(new Butterfly()); }
 function animate() {
     ctx.fillStyle = 'rgba(11, 15, 25, 0.28)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    butterflies.forEach(b => { b.update(); b.draw(); });
+    butterflies.forEach((butterfly) => { (butterfly).update(); (butterfly).draw(); });
     requestAnimationFrame(animate);
 }
 animate();
