@@ -1,3 +1,7 @@
+const BUTTERFLY_COUNT = 160;
+const MOUSE_RADIUS = 140;
+const TRAIL_ALPHA = 0.28;
+
 // 나비 떼 스크립트 엔진 구동
 const canvas = document.getElementById('interactionCanvas');
 const ctx = canvas.getContext('2d');
@@ -6,7 +10,7 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 const butterflies = [];
-const mouse = { x: -1000, y: -1000, radius: 140 };
+const mouse = { x: -1000, y: -1000, radius: MOUSE_RADIUS};
 
 window.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; });
 window.addEventListener('mouseout', () => { mouse.x = -1000; mouse.y = -1000; });
@@ -51,10 +55,10 @@ class Butterfly {
     }
 }
 
-for (let i = 0; i < 160; i++) { butterflies.push(new Butterfly()); }
+for (let i = 0; i < BUTTERFLY_COUNT; i++) { butterflies.push(new Butterfly()); }
 
 function animate() {
-    ctx.fillStyle = 'rgba(11, 15, 25, 0.28)';
+    ctx.fillStyle = 'rgba(11, 15, 25, TRAIL_ALPHA)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     butterflies.forEach((butterfly) => { (butterfly).update(); (butterfly).draw(); });
     requestAnimationFrame(animate);
