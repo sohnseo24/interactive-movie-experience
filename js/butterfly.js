@@ -57,12 +57,29 @@ class Butterfly {
 
 for (let i = 0; i < BUTTERFLY_COUNT; i++) { butterflies.push(new Butterfly()); }
 
-function animate() {
-    ctx.fillStyle = 'rgba(11, 15, 25, TRAIL_ALPHA)';
+//animate()함수 역할 분리(SRP)
+// 캔버스 잔상 레이어 클리어 함수
+function clearCanvas() {
+    ctx.fillStyle = 'rgba(11, 15, 25, 0.28)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    butterflies.forEach((butterfly) => { (butterfly).update(); (butterfly).draw(); });
+}
+
+// 모든 나비들의 상태 업데이트 및 렌더링 루프 분리
+function updateAndRenderButterflies() {
+    for (let i = 0; i < butterflies.length; i++) {
+        butterflies[i].update();
+        butterflies[i].draw();
+    }
+}
+
+// [리팩토링 후] 애니메이션 타임라인 제어만 담당하는 메인 루프
+function animate() {
+    clearCanvas();
+    updateAndRenderButterflies();
     requestAnimationFrame(animate);
 }
+
+// 애니메이션 구동
 animate();
 
 window.addEventListener('resize', () => {
