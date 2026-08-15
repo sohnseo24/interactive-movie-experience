@@ -17,32 +17,51 @@ window.addEventListener('mouseout', () => { mouse.x = -1000; mouse.y = -1000; })
 
 class Butterfly {
     constructor() {
+        this.initPosition();
+        this.baseRadius = Math.random() * 2 + 2;
+        this.speedX = (Math.random() - 0.5) * 1.0;
+        this.speedY = (Math.random() - 0.5) * 1.0;
+        this.color = 'rgba(255, 215, 0, 0.6)';
+    }
+    initPosition() {
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
-        this.vx = (Math.random() - 0.5) * 1.0;
-        this.vy = (Math.random() - 0.5) * 1.0;
-        this.baseRadius = Math.random() * 2.5 + 2;
-        this.color = 'rgba(255, 215, 0, 0.7)';
     }
-    update() {
-        this.x += this.vx; this.y += this.vy;
-        if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
-        if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+    // 기본 관성 이동 및 벽면 바운스 제어
+    moveAndBounce() {
+        this.x += this.speedX;
+        this.y += this.speedY;
 
-        let dx = this.x - mouse.x;
-        let dy = this.y - mouse.y;
-        let distance = Math.sqrt(dx * dx + dy * dy);
+        if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
+        if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
+    }
+    // 마우스 커서 근접 시 벡터장 물리 연산 및 색상 전이
+    reactToMouse() {
+        if (mouse.x !== null && mouse.y !== null) {
+            let dx = this.x - mouse.x;
+            let dy = this.y - mouse.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance < mouse.radius) {
-            this.color = 'rgba(0, 191, 255, 0.9)'; 
-            let force = (mouse.radius - distance) / mouse.radius;
-            let angle = Math.atan2(dy, dx);
-            this.x += Math.cos(angle) * force * 4.5;
-            this.y += Math.sin(angle) * force * 4.5;
+            if (distance < mouse.radius) {
+                this.color = 'rgba(0, 191, 255, 0.9)'; // 파란 깨달음의 빛
+                let force = (mouse.radius - distance) / mouse.radius;
+                let angle = Math.atan2(dy, dx);
+                
+                this.x += Math.cos(angle) * force * 4.5;
+                this.y += Math.sin(angle) * force * 4.5;
+            } else {
+                this.color = 'rgba(255, 215, 0, 0.6)'; // 황금빛 추억
+            }
         } else {
-            this.color = 'rgba(255, 215, 0, 0.6)'; 
+            this.color = 'rgba(255, 215, 0, 0.6)';
         }
     }
+    // 단일 책임으로 결합된 업데이트 실행부
+    update() {
+        this.moveAndBounce();
+        this.reactToMouse();
+    }
+
     draw() {
         ctx.save();
         ctx.fillStyle = this.color;
@@ -60,7 +79,7 @@ for (let i = 0; i < BUTTERFLY_COUNT; i++) { butterflies.push(new Butterfly()); }
 //animate()함수 역할 분리(SRP)
 // 캔버스 잔상 레이어 클리어 함수
 function clearCanvas() {
-    ctx.fillStyle = 'rgba(11, 15, 25, 0.28)';
+    ctx.fillStyle = 'rgba(11, 15, 25, ${TRAIL_ALPHA})';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
