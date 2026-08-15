@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a0a2e; overflow: hidden; font-family: 'Press Start 2P', monospace; }
+  canvas { display: block; image-rendering: pixelated; }
+  #ui { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; }
+  #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,5,20,0.92); z-index: 10; }
+  #overlay h1 { color: #f0d080; font-size: 10px; letter-spacing: 2px; text-align: center; margin-bottom: 12px; line-height: 1.8; text-shadow: 0 0 8px #f0d080aa; }
+  #overlay p { color: #a070c0; font-size: 6px; text-align: center; line-height: 2; margin-bottom: 20px; }
+  #startBtn { background: none; border: 2px solid #39ff14; color: #39ff14; font-family: 'Press Start 2P', monospace; font-size: 7px; padding: 10px 18px; cursor: pointer; pointer-events: all; letter-spacing: 1px; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #gameOver { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,5,20,0.92); z-index: 10; }
+  #gameOver h1 { color: #ff4466; font-size: 10px; margin-bottom: 16px; text-shadow: 0 0 8px #ff4466; }
+  #gameOver p { color: #a070c0; font-size: 6px; margin-bottom: 20px; }
+  #gameOver button { background: none; border: 2px solid #39ff14; color: #39ff14; font-family: 'Press Start 2P', monospace; font-size: 7px; padding: 10px 18px; cursor: pointer; pointer-events: all; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="overlay">
+  <h1>SHOT BY SHOT</h1>
+  <p>she runs<br>the hallways hold her memory<br>avoid the remnants</p>
+  <button id="startBtn">[ PRESS START ]</button>
+</div>
+<div id="gameOver">
+  <h1>GAME OVER</h1>
+  <p id="finalScore"></p>
+  <button onclick="restartGame()">[ TRY AGAIN ]</button>
+</div>
+<script>
+
+  // 3번 역 게임 배경음악 엔진 세팅
+  let gameBgm = new Audio("../assets/station3_bgm.mp3"); 
+  gameBgm.loop = true;
+  gameBgm.volume = 0.4;
+
+  // 브라우저 차단 정책 우회용 안전 재생 함수
+  function playAudioSecurely() {
+    gameBgm.play()
+      .then(() => console.log(" 배경음악 재생 성공!"))
+      .catch(e => console.error("오디오 재생 실패:", e));
+  }
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 680, H = 360;
+canvas.width = W; canvas.height = H;
+canvas.style.width = '100%'; canvas.style.height = 'auto';
+
+let running = false, gameOver = false;
+let score = 0, hp = 5, frame = 0;
+let shakeX = 0, shakeY = 0, shakeTTL = 0;
+let flashAlpha = 0;
+let bgX = 0;
+let obstacles = [];
+let particles = [];
+let introPhase = true;
+
+// Golden hour palette
+const C = {
+  sky:    '#1a0a2e',
+  floor:  '#2a1a1a',
+  wall:   '#3d2020',
+  wallMid:'#4a2828',
+  gold:   '#f0a030',
+  goldDim:'#a06010',
+  window: '#ffe0a0',
+  winGlow:'#ffb03060',
+  neon:   '#39ff14',
+  neonDim:'#1a7a08',
+  neonGlow:'#39ff1480',
+  pink:   '#ff66aa',
+  purple: '#9944cc',
+  denim1: '#3a6090',
+  denim2: '#2a4a70',
+  skin:   '#f0c090',
+  hair:   '#2a1a08',
+  shoe:   '#ffffff',
+  shoeDark:'#cccccc',
+};
+
+// Pixel art sprite frames for the girl (8x16 pixel cells, drawn as rects)
+// Each frame: array of [x,y,w,h,color] relative to sprite origin
+function spriteFrame(f) {
+  const run = f % 8;
+  const legL = Math.sin(run/8 * Math.PI*2);
+  const legR = Math.sin(run/8 * Math.PI*2 + Math.PI);
+  const armL = -legL;
+  const armR = -legR;
+  const bob = Math.abs(Math.sin(run/4 * Math.PI)) * 2;
+
+  return { legL, legR, armL, armR, bob };
+}
+
+// Draw pixel girl
+function drawGirl(x, y, animFrame) {
+  const { legL, legR, armL, armR, bob } = spriteFrame(animFrame);
+  const px = Math.round(x), py = Math.round(y + bob);
+  const s = 2; // pixel scale
+
+  // Helper
+  const r = (rx, ry, rw, rh, col) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(px + rx*s, py + ry*s, rw*s, rh*s);
+  };
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(px+8*s, py+18*s, 8*s, 2*s, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Legs (animated)
+  const lly = 12 + legL * 3, lry = 12 + legR * 3;
+  // Left leg
+  r(3, lly, 3, 3, C.denim2);
+  r(3, lly+3, 3, 2, C.skin);
+  r(2, lly+5, 4, 2, C.shoe); // shoe
+  // Right leg
+  r(7, lry, 3, 3, C.denim2);
+  r(7, lry+3, 3, 2, C.skin);
+  r(6, lry+5, 4, 2, C.shoeDark);
+
+  // Body - denim jacket
+  r(2, 7, 9, 6, C.denim1);
+  // Jacket detail
+  r(5, 7, 1, 5, C.denim2);
+  // Under shirt
+  r(3, 11, 7, 2, '#e0e0e0');
+
+  // Arms (animated)
+  const aly = 7 + armL * 2, ary = 7 + armR * 2;
+  // Left arm
+  r(0, aly, 2, 5, C.denim1);
+  r(0, aly+4, 2, 2, C.skin);
+  // Right arm
+  r(11, ary, 2, 5, C.denim1);
+  r(11, ary+4, 2, 2, C.skin);
+
+  // Head
+  r(3, 1, 7, 6, C.skin);
+  // Hair
+  r(3, 0, 7, 3, C.hair);
+  r(3, 1, 1, 4, C.hair); // sideburn
+  r(9, 1, 1, 4, C.hair);
+  // Eyes
+  r(5, 3, 1, 1, '#1a0a08');
+  r(8, 3, 1, 1, '#1a0a08');
+  // Mouth (tiny)
+  r(6, 5, 2, 1, '#c08070');
+  // Hair highlight
+  r(4, 0, 5, 1, '#4a2a10');
+
+  // Backpack strap hint
+  r(10, 7, 1, 6, '#8B6030');
+}
+
+// Draw scrolling school hallway
+function drawBG(offset) {
+  const o = Math.round(offset) % 320;
+  // Render 3 copies for seamless scroll
+  for (let copy = -1; copy <= 2; copy++) {
+    drawHallwaySection(o + copy * 320);
+  }
+}
+
+function drawHallwaySection(startX) {
+  const sx = startX;
+  // Ceiling
+  ctx.fillStyle = '#3d2020';
+  ctx.fillRect(sx, 0, 320, 80);
+  // Wall
+  ctx.fillStyle = '#4a2828';
+  ctx.fillRect(sx, 80, 320, 160);
+  // Baseboard
+  ctx.fillStyle = '#2a1a1a';
+  ctx.fillRect(sx, 232, 320, 8);
+  // Floor
+  ctx.fillStyle = '#3a2020';
+  ctx.fillRect(sx, 240, 320, 120);
+  // Floor tiles
+  for (let i = 0; i < 4; i++) {
+    const tx = sx + i*80;
+    ctx.strokeStyle = '#2a1010';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tx, 240, 80, 60);
+    ctx.strokeRect(tx, 300, 80, 60);
+  }
+  // Perspective lines on ceiling
+  ctx.strokeStyle = '#2a1010';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(sx, 0); ctx.lineTo(sx+160, 80);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(sx+320, 0); ctx.lineTo(sx+160, 80);
+  ctx.stroke();
+
+  // Windows with golden hour glow
+  for (let i = 0; i < 3; i++) {
+    const wx = sx + 20 + i*105;
+    const wy = 90;
+    const ww = 70, wh = 120;
+
+    // Window glow (outside)
+    const grd = ctx.createRadialGradient(wx+ww/2, wy+wh/2, 10, wx+ww/2, wy+wh/2, 80);
+    grd.addColorStop(0, '#ffe0a060');
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.fillRect(wx-20, wy-10, ww+40, wh+20);
+
+    // Window frame
+    ctx.fillStyle = '#6a3a10';
+    ctx.fillRect(wx-4, wy-4, ww+8, wh+8);
+    // Window pane
+    ctx.fillStyle = '#ffe0a0';
+    ctx.fillRect(wx, wy, ww, wh);
+    // Window cross
+    ctx.fillStyle = '#6a3a10';
+    ctx.fillRect(wx+ww/2-2, wy, 4, wh);
+    ctx.fillRect(wx, wy+wh/2-2, ww, 4);
+    // Light beam on floor
+    ctx.fillStyle = 'rgba(255,200,80,0.07)';
+    ctx.beginPath();
+    ctx.moveTo(wx, wy+wh);
+    ctx.lineTo(wx+ww, wy+wh);
+    ctx.lineTo(wx+ww+40, H);
+    ctx.lineTo(wx-20, H);
+    ctx.closePath();
+    ctx.fill();
+    // Dust motes
+    for(let m=0; m<3; m++) {
+      const mx = wx + (frame*0.3+m*30)%ww;
+      const my = wy+20 + (frame*0.2+m*20)%80;
+      ctx.fillStyle = 'rgba(255,220,100,0.4)';
+      ctx.fillRect(mx, my, 2, 2);
+    }
+  }
+
+  // Ceiling light fixtures
+  for (let i = 0; i < 2; i++) {
+    const lx = sx + 40 + i*160;
+    ctx.fillStyle = '#5a3030';
+    ctx.fillRect(lx, 60, 60, 10);
+    ctx.fillStyle = 'rgba(255,240,180,0.5)';
+    ctx.fillRect(lx+2, 68, 56, 8);
+    // Glow below
+    const lg = ctx.createLinearGradient(0, 76, 0, 140);
+    lg.addColorStop(0, 'rgba(255,230,150,0.15)');
+    lg.addColorStop(1, 'transparent');
+    ctx.fillStyle = lg;
+    ctx.fillRect(lx-20, 76, 100, 64);
+  }
+
+  // Lockers on wall
+  for (let i = 0; i < 5; i++) {
+    const lx = sx + i*64;
+    ctx.fillStyle = '#3a2525';
+    ctx.fillRect(lx, 90, 60, 140);
+    ctx.strokeStyle = '#2a1515';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(lx+2, 92, 56, 136);
+    // Locker handle
+    ctx.fillStyle = '#6a4040';
+    ctx.fillRect(lx+26, 160, 8, 4);
+    // Locker vent slits
+    for(let v=0; v<3; v++) {
+      ctx.fillStyle = '#2a1515';
+      ctx.fillRect(lx+10, 100+v*8, 40, 2);
+    }
+  }
+}
+
+// Neon orb obstacle
+class Orb {
+  constructor() {
+    this.x = W + 20 + Math.random() * 60;
+    this.y = 180 + Math.random() * 60;
+    this.vx = -(3 + score * 0.003 + Math.random() * 2);
+    this.vy = (Math.random() - 0.5) * 2;
+    this.r = 14;
+    this.pulse = Math.random() * Math.PI * 2;
+    this.trail = [];
+  }
+  update() {
+    this.trail.push({x:this.x, y:this.y});
+    if(this.trail.length > 10) this.trail.shift();
+    this.x += this.vx;
+    this.y += this.vy;
+    this.pulse += 0.15;
+    if(this.y < 160 || this.y > 240) this.vy *= -1;
+  }
+  draw() {
+    // Trail
+    for(let i=0; i<this.trail.length; i++) {
+      const a = i/this.trail.length;
+      ctx.fillStyle = `rgba(57,255,20,${a*0.3})`;
+      ctx.beginPath();
+      ctx.arc(this.trail[i].x, this.trail[i].y, this.r*a*0.7, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // Outer glow
+    const p = 0.7 + Math.sin(this.pulse)*0.3;
+    ctx.fillStyle = `rgba(57,255,20,0.15)`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r*1.8*p, 0, Math.PI*2);
+    ctx.fill();
+    // Middle ring
+    ctx.fillStyle = `rgba(57,255,20,0.3)`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r*1.2, 0, Math.PI*2);
+    ctx.fill();
+    // Core
+    ctx.fillStyle = '#39ff14';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r*0.85, 0, Math.PI*2);
+    ctx.fill();
+    // Center white
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r*0.3, 0, Math.PI*2);
+    ctx.fill();
+    // Traffic light dots
+    const dotColors = ['#ff2020','#ffd020','#39ff14'];
+    for(let d=0; d<3; d++) {
+      ctx.fillStyle = dotColors[d];
+      ctx.beginPath();
+      ctx.arc(this.x - 4 + d*4, this.y, 2, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+class Particle {
+  constructor(x,y) {
+    this.x=x; this.y=y;
+    this.vx=(Math.random()-0.5)*8;
+    this.vy=(Math.random()-0.5)*8;
+    this.life=1; this.decay=0.04+Math.random()*0.04;
+    this.col=['#39ff14','#a0ff60','#ffffff','#ff66aa'][Math.floor(Math.random()*4)];
+    this.size=3+Math.random()*4;
+  }
+  update() { this.x+=this.vx; this.y+=this.vy; this.vy+=0.2; this.life-=this.decay; }
+  draw() {
+    ctx.fillStyle = this.col;
+    ctx.globalAlpha = this.life;
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Girl position
+let girlY = 200;
+let girlVY = 0;
+let onGround = true;
+const GROUND = 205;
+const JUMP = -11;
+
+// HP hearts drawn in canvas
+function drawHUD() {
+  // HUD background
+  ctx.fillStyle = 'rgba(10,5,20,0.7)';
+  ctx.fillRect(0, 0, W, 36);
+  // HP label
+  ctx.fillStyle = '#ff66aa';
+  ctx.font = '8px "Press Start 2P"';
+  ctx.fillText('HP', 10, 22);
+  // Hearts
+  for(let i=0; i<5; i++) {
+    ctx.fillStyle = i < hp ? '#ff66aa' : '#442233';
+    drawHeart(40 + i*22, 10);
+  }
+  // Score
+  ctx.fillStyle = '#f0d080';
+  ctx.font = '8px "Press Start 2P"';
+  const sc = String(Math.floor(score)).padStart(6,'0');
+  ctx.fillText('SCORE', W-160, 22);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(sc, W-80, 22);
+}
+
+function drawHeart(x, y) {
+  const c = ctx.fillStyle;
+  ctx.fillRect(x+2, y, 6, 2);
+  ctx.fillRect(x, y+2, 10, 6);
+  ctx.fillRect(x+2, y+8, 6, 2);
+  ctx.fillRect(x+4, y+10, 2, 2);
+  ctx.fillStyle = c;
+}
+
+let orbTimer = 0, orbInterval = 90;
+let keys = {};
+document.addEventListener('keydown', e => { keys[e.code] = true; });
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// Also touch support
+canvas.addEventListener('click', () => {
+  if(running && onGround) { girlVY = JUMP; onGround = false; }
+});
+
+function spawnOrb() {
+  obstacles.push(new Orb());
+}
+
+function resetGame() {
+  score = 0; hp = 5; frame = 0;
+  obstacles = []; particles = [];
+  girlY = GROUND; girlVY = 0; onGround = true;
+  orbTimer = 0; orbInterval = 90;
+  bgX = 0; shakeX = 0; shakeY = 0;
+  shakeTTL = 0; flashAlpha = 0;
+}
+
+function restartGame() {
+  document.getElementById('gameOver').style.display = 'none';
+  resetGame();
+  running = true;
+  gameOver = false;
+  loop();
+}
+
+// Intro outro text
+let introText = ['', '...golden hour.', 'she runs.', 'memory chases her.'];
+let introIdx = 0, introTimer = 0;
+
+function loop() {
+  if(!running) return;
+
+  frame++;
+  bgX -= 2.5;
+
+  // Input
+  if((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && onGround) {
+    girlVY = JUMP; onGround = false;
+  }
+
+  // Physics
+  girlVY += 0.5;
+  girlY += girlVY;
+  if(girlY >= GROUND) { girlY = GROUND; girlVY = 0; onGround = true; }
+
+  // Duck
+  const duck = keys['ArrowDown'] || keys['KeyS'];
+
+  // Obstacles
+  orbTimer++;
+  if(orbTimer >= orbInterval) {
+    spawnOrb();
+    orbTimer = 0;
+    orbInterval = Math.max(40, orbInterval - 0.3);
+  }
+  obstacles = obstacles.filter(o => o.x > -30);
+  obstacles.forEach(o => o.update());
+
+  // Collision
+  const hitbox = { x: 80, y: girlY + (duck?14:4), w: 20, h: duck?12:28 };
+  obstacles.forEach((o,idx) => {
+    if(Math.abs(o.x - (hitbox.x+10)) < hitbox.w/2+o.r*0.7 &&
+       Math.abs(o.y - (hitbox.y+hitbox.h/2)) < hitbox.h/2+o.r*0.7) {
+      hp--;
+      obstacles.splice(idx,1);
+      for(let i=0;i<18;i++) particles.push(new Particle(o.x, o.y));
+      shakeTTL = 12; shakeX = 6; shakeY = 4;
+      flashAlpha = 0.5;
+      if(hp <= 0) { endGame(); return; }
+    }
+  });
+
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => p.update());
+
+  // Score
+  score += 0.08;
+
+  // Shake decay
+  if(shakeTTL > 0) { shakeTTL--; shakeX = (shakeTTL/12)*6*(Math.random()>0.5?1:-1); shakeY = (shakeTTL/12)*4*(Math.random()>0.5?1:-1); }
+  else { shakeX = 0; shakeY = 0; }
+  flashAlpha = Math.max(0, flashAlpha - 0.04);
+
+  // Draw
+  ctx.save();
+  if(shakeTTL > 0) ctx.translate(shakeX, shakeY);
+
+  // BG
+  ctx.fillStyle = '#1a0a2e';
+  ctx.fillRect(0, 0, W, H);
+  drawBG(bgX);
+
+  // Particles behind
+  particles.forEach(p => p.draw());
+
+  // Girl
+  const runAnim = onGround ? frame : (duck ? 0 : Math.floor(frame/2)%8);
+  if(duck) {
+    ctx.save();
+    ctx.translate(0, 14);
+    drawGirl(68, girlY - 32, runAnim);
+    ctx.restore();
+  } else {
+    drawGirl(68, girlY - 36, runAnim);
+  }
+
+  // Obstacles
+  obstacles.forEach(o => o.draw());
+
+  ctx.restore();
+
+  // Flash overlay
+  if(flashAlpha > 0) {
+    ctx.fillStyle = `rgba(57,255,20,${flashAlpha})`;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // Dreamy vignette
+  const vig = ctx.createRadialGradient(W/2,H/2,H*0.3, W/2,H/2,H*0.8);
+  vig.addColorStop(0,'transparent');
+  vig.addColorStop(1,'rgba(10,3,20,0.55)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0,0,W,H);
+
+  // Scanlines (subtle)
+  for(let y=0; y<H; y+=3) {
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillRect(0,y,W,1);
+  }
+
+  // HUD on top
+  drawHUD();
+
+  // Intro caption
+  if(frame < 180) {
+    const alpha = frame < 60 ? frame/60 : frame > 140 ? (180-frame)/40 : 1;
+    ctx.fillStyle = `rgba(240,200,100,${alpha*0.9})`;
+    ctx.font = '7px "Press Start 2P"';
+    ctx.textAlign = 'center';
+    ctx.fillText('♪ shot by shot ♪', W/2, H-30);
+    ctx.textAlign = 'left';
+  }
+
+  requestAnimationFrame(loop);
+}
+
+function endGame() {
+  running = false;
+  gameOver = true;
+  document.getElementById('finalScore').textContent = 'SCORE: ' + String(Math.floor(score)).padStart(6,'0');
+  document.getElementById('gameOver').style.display = 'flex';
+}
+
+document.getElementById('startBtn').onclick = () => {
+  document.getElementById('overlay').style.display = 'none';
+  playAudioSecurely(); 
+  resetGame();
+  running = true;
+  loop();
+};
+
+// Draw static frame while loading
+ctx.fillStyle = '#1a0a2e';
+ctx.fillRect(0,0,W,H);
+drawBG(0);
+</script>
+</body>
+</html>
