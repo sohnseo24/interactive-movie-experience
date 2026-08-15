@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Station 4: Film Archive - 영화적 기록</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #05070c;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* 플랫폼 돌아가기 버튼 */
+        .back-btn {
+            position: fixed; top: 30px; left: 30px; z-index: 100;
+            padding: 12px 24px; background: rgba(11, 15, 25, 0.8); border: 1px solid #ffca2c;
+            color: #ffca2c; cursor: pointer; text-decoration: none;
+            font-weight: 600; font-size: 0.85rem; border-radius: 4px; backdrop-filter: blur(5px);
+            transition: all 0.3s;
+        }
+        .back-btn:hover { background: #ffca2c; color: #0b0f19; box-shadow: 0 0 15px #ffca2c; }
+
+        /* 수직 스크롤 비디오 컨테이너 */
+        .archive-container {
+            width: 100%; height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory; /* 세로 방향으로 착착 걸리게 설정 */
+            scrollbar-width: none; /* 파이어폭스 스크롤바 숨김 */
+        }
+        .archive-container::-webkit-scrollbar { display: none; } /* 크롬/사파리 스크롤바 숨김 */
+
+        .video-section {
+            width: 100%; height: 100vh;
+            scroll-snap-align: start; /* 섹션 시작점에 스냅 */
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* 배경 영상 스타일 */
+        video {
+            width: 100%; height: 100%;
+            object-fit: cover; /* 화면에 꽉 차게 */
+            position: absolute; top: 0; left: 0; z-index: 1;
+        }
+
+        /* 영상 위 텍스트 오버레이 (하단 자막 + 반투명) */
+        .video-info {
+            position: absolute; 
+            bottom: 50px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            z-index: 2;
+            text-align: center; 
+            color: #ffffff;
+            /* 뒤쪽 영상 무드가 잘 보이도록 0.45로 설정 */
+            background: rgba(0, 0, 0, 0.45); 
+            padding: 15px 35px; 
+            border-radius: 6px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        /* 이미지의 노란색 외곽선 글씨체 스타일 적용 */
+        .video-info h2 {
+            margin: 0; 
+            font-size: 1.5rem; 
+            letter-spacing: 0.1rem;
+            
+            /* 1. 글씨 색상을 밝은 샛노란색으로 설정 */
+            color: #e5cc16; 
+            
+            /* 2. 본문 폰트를 둥글고 단단한 고딕 계열로 지정 (가장 유사한 기본 폰트들) */
+            font-family: "Malgun Gothic", "맑은 고딕", sans-serif;
+            font-weight: bold;
+
+            /* 3. 테두리와 그림자를 동시에 주는 핵심 마법 (상하좌우 검은 테두리 + 우하단 그림자) */
+            text-shadow: 
+                -1px -1px 0 #000,  1px -1px 0 #000, -1px  1px 0 #000,  1px  1px 0 #000, /* 검은색 얇은 테두리 */
+                3px 3px 5px rgba(0, 0, 0, 0.85); /* 우측 하단으로 번지는 부드러운 그림자 */
+        }
+        .video-info p {
+            margin: 6px 0 0; 
+            font-size: 0.9rem; 
+            color: #ffffff; 
+            opacity: 0.85;
+        }
+
+        /* 우측 네비게이션 가이드 (위치 및 레이어 최적화) */
+        .scroll-guide {
+            position: fixed; right: 40px; top: 50%; transform: translateY(-50%);
+            z-index: 100; display: flex; flex-direction: column; gap: 20px;
+        }
+        .dot { 
+            width: 12px; height: 12px; 
+            background: rgba(255, 255, 255, 0.25); 
+            border-radius: 50%; 
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* 활성화된 동그라미 불빛 디자인 강화 */
+        .dot.active { 
+            background: #ffca2c; 
+            transform: scale(1.4);
+            box-shadow: 0 0 15px #ffca2c, 0 0 30px #ffca2c; 
+        }
+
+        /* 최초 오디오 활성화를 유도하는 가이트 게이트 */
+        .audio-gate {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #05070c; z-index: 200; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .gate-title {
+            color: #ffca2c; font-size: 1.6rem; letter-spacing: 0.3rem; margin-bottom: 30px;
+            text-shadow: 0 0 15px rgba(255,202,44,0.3); font-weight: 700;
+        }
+        .gate-btn {
+            padding: 14px 45px; background: #0b0f19; border: 1px solid #ffca2c; color: #ffca2c;
+            font-weight: 700; font-size: 0.9rem; border-radius: 4px; cursor: pointer; 
+            letter-spacing: 0.1rem; transition: all 0.3s;
+        }
+        .gate-btn:hover { background: #ffca2c; color: #0b0f19; box-shadow: 0 0 20px #ffca2c; }
+    </style>
+</head>
+<body>
+
+    <div class="audio-gate" id="audioGate">
+        <div class="gate-title">ENTER THE MEMORY STREAM</div>
+        <button class="gate-btn" id="gatePlayBtn">▶ ARCHIVE UNLOCK</button>
+    </div>
+
+    <a href="../index.html" class="back-btn">← BACK TO PLATFORM</a>
+
+    <div class="scroll-guide">
+        <div class="dot active"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+    </div>
+
+    <div class="archive-container" id="archiveContainer">
+        <section class="video-section">
+            <video loop playsinline><source src="../assets/sample_video_1.mp4" type="video/mp4"></video>
+            <div class="video-info">
+                <h2>MEMORY 01: THE FOREST</h2>
+                <p>나비의 숲에서 발견한 첫 번째 파편</p>
+            </div>
+        </section>
+
+        <section class="video-section">
+            <video loop playsinline><source src="../assets/sample_video_2.mp4" type="video/mp4"></video>
+            <div class="video-info">
+                <h2>MEMORY 02: NOISE ECHO</h2>
+                <p>믹싱 덱에서 울려 퍼지는 잔상의 소리</p>
+            </div>
+        </section>
+
+        <section class="video-section">
+            <video loop playsinline><source src="../assets/sample_video_3.mp4" type="video/mp4"></video>
+            <div class="video-info">
+                <h2>MEMORY 03: GREEN GLOW</h2>
+                <p>찰나의 섬광이 남긴 초록빛 궤적</p>
+            </div>
+        </section>
+
+        <section class="video-section">
+            <video loop playsinline><source src="../assets/sample_video_4.mp4" type="video/mp4"></video>
+            <div class="video-info">
+                <h2>MEMORY 04: FILM RECALL</h2>
+                <p>아카이브에 기록된 마지막 깨달음</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const container = document.getElementById('archiveContainer');
+        const dots = document.querySelectorAll('.dot');
+        const sections = document.querySelectorAll('.video-section');
+        const gate = document.getElementById('audioGate');
+
+        // 게이트 버튼 트래킹 연산 해제
+        document.getElementById('gatePlayBtn').addEventListener('click', () => {
+            gate.style.opacity = '0';
+            setTimeout(() => {
+                gate.style.display = 'none';
+                playVideoAt(0); // 첫 번째 트랙 미디어 가동
+            }, 400);
+        });
+
+        // 정밀 스크롤 매칭 제어 스크립트 (동그라미 추종 + 개별 오디오 하이재킹 통합)
+        container.addEventListener('scroll', () => {
+            // 소수점 보정 연산을 거쳐 완벽한 인덱스 검출
+            const index = Math.round(container.scrollTop / window.innerHeight);
+            
+            // 1. 우측 네비게이션 동그라미 스위칭
+            dots.forEach(dot => dot.classList.remove('active'));
+            if(dots[index]) dots[index].classList.add('active');
+            
+            // 2. 릴스 스타일 세션별 음원 실시간 스위칭 믹서
+            sections.forEach((section, idx) => {
+                const vid = section.querySelector('video');
+                if (idx === index) {
+                    if (vid.paused) {
+                        vid.currentTime = 0; // 스크롤 안착 시 처음부터 깨끗하게 시작
+                        vid.play().catch(e => console.log("재생 인스턴스 대기"));
+                    }
+                } else {
+                    vid.pause(); // 화면에서 가려진 트랙은 완전 음소거 및 정지
+                }
+            });
+        });
+
+        function playVideoAt(index) {
+            if(sections[index]) {
+                const vid = sections[index].querySelector('video');
+                vid.play().catch(e => console.log("초기 컨텍스트 활성화"));
+            }
+        }
+    </script>
+</body>
+</html>
