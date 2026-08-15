@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Custom Suno Music - 노이즈 믹스 역</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #07090e;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #ffffff;
+            user-select: none;
+        }
+        
+        .back-btn {
+            position: absolute; top: 30px; left: 30px; z-index: 10;
+            padding: 12px 24px; background: rgba(11, 15, 25, 0.8); border: 1px solid #ffca2c;
+            color: #ffca2c; cursor: pointer; text-decoration: none;
+            font-weight: 600; font-size: 0.85rem; border-radius: 4px; backdrop-filter: blur(5px);
+            transition: all 0.3s;
+        }
+        .back-btn:hover { background: #ffca2c; color: #0b0f19; box-shadow: 0 0 15px #ffca2c; }
+
+        .deck-wrapper {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            width: 100%; height: 100%; box-sizing: border-box; padding: 10px;
+        }
+
+        .narrative-guide-block {
+            text-align: center; width: 95%; max-width: 1000px; margin-bottom: 20px;
+            font-family: 'Cinzel', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .narrative-guide-block h2 {
+            margin: 0 0 8px 0; font-size: 1.4rem; color: #ffca2c; letter-spacing: 0.3rem;
+            text-shadow: 0 0 12px rgba(255, 202, 44, 0.4); font-weight: 700;
+        }
+        .narrative-guide-block p {
+            margin: 4px 0; font-size: 0.72rem; color: #94a3b8; letter-spacing: 0.08rem; line-height: 1.4; font-weight: 500;
+        }
+        .narrative-guide-block .highlight-text {
+            color: #ffca2c; font-weight: 600;
+        }
+
+        .multi-screen-bridge {
+            display: flex; justify-content: space-between; width: 95%; max-width: 1000px; gap: 15px; margin-bottom: 20px;
+        }
+        .display-screen {
+            width: 33.3%; height: 125px; background: #020305; border: 2px solid #1e293b; border-radius: 6px;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.9); overflow: hidden; position: relative;
+        }
+        .screen-tag {
+            position: absolute; top: 8px; left: 10px; font-size: 0.6rem; font-weight: 800; color: #475569; letter-spacing: 0.05rem; z-index: 5;
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        .dj-console {
+            width: 95%; max-width: 1000px; background: #0f141d;
+            border: 2px solid #242f41; border-radius: 12px; padding: 15px 20px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;
+        }
+
+        .jog-container { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .jog-label { font-size: 0.65rem; font-weight: 700; color: #475569; letter-spacing: 0.05rem; }
+        
+        /* 판떼기 덩어리 전체가 회전하도록 휠 구조 튜닝 */
+        .jog-wheel {
+            width: 155px; height: 155px; background: radial-gradient(circle, #05070a 25%, #151b26 35%, #0b0e14 65%, #253147 100%);
+            border: 5px solid #1e293b; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.6), inset 0 0 12px rgba(0,0,0,0.9);
+            position: relative; cursor: grab; will-change: transform;
+        }
+        .jog-wheel:active { cursor: grabbing; border-color: #00bfff; }
+        .jog-center { width: 40px; height: 40px; background: #07090e; border: 2px solid #ffca2c; border-radius: 50%; box-shadow: 0 0 10px rgba(255,202,44,0.4); z-index: 2; }
+        .jog-marker { position: absolute; top: 8px; left: 50%; width: 4px; height: 30px; background: #ffca2c; border-radius: 2px; transform: translateX(-50%); }
+
+        .mixer-panel {
+            display: flex; justify-content: center; background: #06080d; 
+            border-radius: 6px; padding: 10px 5px; border: 1px solid #1a2332; flex-grow: 1; margin: 0 15px;
+        }
+        .mixer-channel { display: flex; flex-direction: column; align-items: center; width: 115px; position: relative; }
+        .mixer-channel:not(:last-child)::after {
+            content: ''; position: absolute; right: 0; top: 10%; width: 1px; height: 80%;
+            background: linear-gradient(to bottom, transparent, #242f41, transparent);
+        }
+        
+        .fader-row { display: flex; align-items: center; justify-content: center; width: 100%; height: 110px; margin: 5px 0; }
+        .led-meter { width: 4px; height: 100px; background: #111; border-radius: 2px; margin-right: 8px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; gap: 2px; }
+        .led-segment { width: 100%; height: 5px; background: #222; }
+
+        .vertical-fader {
+            -webkit-appearance: none; transform: rotate(-90deg); width: 90px; height: 4px; background: #020305; border-radius: 2px; outline: none;
+        }
+        .vertical-fader::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 22px; height: 10px; background: #ffffff; border: 2px solid #00bfff; border-radius: 2px; cursor: pointer; box-shadow: 0 0 8px rgba(0, 191, 255, 0.6);
+        }
+        
+        .fader-value { font-size: 0.75rem; color: #00bfff; font-weight: 700; font-family: monospace; }
+        .channel-title { font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase; }
+
+        .master-controls { display: flex; gap: 15px; margin-top: 10px; }
+        .cue-btn { padding: 12px 45px; background: #162235; border: 1px solid #00bfff; color: #00bfff; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.1rem; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
+        .cue-btn:hover { background: #00bfff; color: #07090e; box-shadow: 0 0 15px rgba(0,191,255,0.4); }
+        .stop-btn { padding: 12px 45px; background: #161f35; border: 1px solid #475569; color: #94a3b8; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.1rem; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
+        .stop-btn:hover { background: #ef4444; border-color: #ef4444; color: #ffffff; box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+    </style>
+</head>
+<body>
+
+    <a href="../index.html" class="back-btn">← BACK TO PLATFORM</a>
+
+    <div class="deck-wrapper">
+        
+        <div class="narrative-guide-block">
+            <h2>NOISE MIX STATION</h2>
+            <p>ALL AUDIO RHYTHMS IN THIS ROOM WERE CO-CREATED WITH <span class="highlight-text">SUNO AI ENGINE</span>.</p>
+            <p>DRAG JOG WHEELS TO MORPH THE FREQUENCY, AND CONTROL THE FADERS TO DESIGN YOUR SHOEGAZE SOUNDSCAPE.</p>
+        </div>
+
+        <div class="multi-screen-bridge">
+            <div class="display-screen">
+                <div class="screen-tag">MONITOR 01 // AMBIENT WAVE</div>
+                <canvas id="canvas1"></canvas>
+            </div>
+            <div class="display-screen">
+                <div class="screen-tag">MONITOR 02 // RHYTHM BEAT BAR</div>
+                <canvas id="canvas2"></canvas>
+            </div>
+            <div class="display-screen">
+                <div class="screen-tag">MONITOR 03 // MELODY SHADOW PARTICLE</div>
+                <canvas id="canvas3"></canvas>
+            </div>
+        </div>
+
+        <div class="control-block">
+            <div class="dj-console">
+                
+                <div class="jog-container">
+                    <div class="jog-wheel" id="leftJog">
+                        <div class="jog-marker"></div>
+                        <div class="jog-center"></div>
+                    </div>
+                    <div class="jog-label">FX FILTER CUTOFF</div>
+                </div>
+
+                <div class="mixer-panel">
+                    <div class="mixer-channel">
+                        <div class="channel-title">CH 1 AMBIENT</div>
+                        <div class="fader-row">
+                            <div class="led-meter" id="meter1"></div>
+                            <input type="range" class="vertical-fader" id="fader1" min="0" max="1" step="0.01" value="0.7">
+                        </div>
+                        <div class="fader-value" id="val1">70%</div>
+                    </div>
+
+                    <div class="mixer-channel">
+                        <div class="channel-title">CH 2 RHYTHM</div>
+                        <div class="fader-row">
+                            <div class="led-meter" id="meter2"></div>
+                            <input type="range" class="vertical-fader" id="fader2" min="0" max="1" step="0.01" value="0.5">
+                        </div>
+                        <div class="fader-value" id="val2">50%</div>
+                    </div>
+
+                    <div class="mixer-channel">
+                        <div class="channel-title">CH 3 MELODY</div>
+                        <div class="fader-row">
+                            <div class="led-meter" id="meter3"></div>
+                            <input type="range" class="vertical-fader" id="fader3" min="0" max="1" step="0.01" value="0.6">
+                        </div>
+                        <div class="fader-value" id="val3">60%</div>
+                    </div>
+                </div>
+
+                <div class="jog-container">
+                    <div class="jog-wheel" id="rightJog">
+                        <div class="jog-marker" style="background: #e20074;"></div>
+                        <div class="jog-center" style="border-color: #e20074; box-shadow: 0 0 10px rgba(226,0,116,0.4);"></div>
+                    </div>
+                    <div class="jog-label">FX RESONANCE RESON</div>
+                </div>
+
+            </div>
+
+            <div class="master-controls">
+                <button class="cue-btn" id="startMixBtn">▶ DECK PLAY</button>
+                <button class="stop-btn" id="stopMixBtn">■ CUE STOP</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const c1 = document.getElementById('canvas1'), ctx1 = c1.getContext('2d');
+        const c2 = document.getElementById('canvas2'), ctx2 = c2.getContext('2d');
+        const c3 = document.getElementById('canvas3'), ctx3 = c3.getContext('2d');
+        
+        let screens = [c1, c2, c3];
+        screens.forEach(c => { c.width = c.parentElement.clientWidth; c.height = c.parentElement.clientHeight; });
+
+        let audioCtx, isPlaying = false, autoRotation = 0;
+        let biquadFilter; 
+        let gainNodes = [], analysers = [];
+        let tracks = [];
+
+        // 사운드 mp3 파일명 링크 
+        const trackFiles = ["../assets/track1.mp3", "../assets/track2.mp3", "../assets/track3.mp3"];
+        
+        trackFiles.forEach((file) => {
+            let audio = new Audio(file);
+            audio.loop = true;
+            //audio.crossOrigin = "anonymous";
+            tracks.push(audio);
+        });
+
+        buildLED('meter1'); buildLED('meter2'); buildLED('meter3');
+        function buildLED(id) {
+            const meter = document.getElementById(id);
+            for(let i=0; i<15; i++) {
+                const seg = document.createElement('div'); seg.className = 'led-segment'; meter.appendChild(seg);
+            }
+        }
+
+        const faders = [document.getElementById('fader1'), document.getElementById('fader2'), document.getElementById('fader3')];
+        const values = [document.getElementById('val1'), document.getElementById('val2'), document.getElementById('val3')];
+
+        faders.forEach((fader, idx) => {
+            fader.addEventListener('input', (e) => {
+                values[idx].innerText = Math.round(e.target.value * 100) + "%";
+                if (gainNodes[idx]) gainNodes[idx].gain.value = e.target.value;
+            });
+        });
+
+        function initDJEngine() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            biquadFilter = audioCtx.createBiquadFilter();
+            biquadFilter.type = "lowpass";
+            biquadFilter.frequency.value = 1600; 
+
+            for (let i = 0; i < 3; i++) {
+                let source = audioCtx.createMediaElementSource(tracks[i]);
+                let gainNode = audioCtx.createGain();
+                let an = audioCtx.createAnalyser();
+                an.fftSize = 128; 
+
+                source.connect(gainNode);
+                gainNode.connect(an);
+                an.connect(biquadFilter);
+
+                gainNode.gain.value = faders[i].value;
+                
+                gainNodes.push(gainNode);
+                analysers.push(an);
+            }
+
+            biquadFilter.connect(audioCtx.destination);
+            animateScreens();
+        }
+
+        // 조그 휠 덩어리 전체가 마우스 드래그를 자연스럽게 따르며 회전하는 물리 로직
+        setupJogPhysicalControl('leftJog', (angleDegree) => {
+            if(biquadFilter) {
+                let normAngle = (angleDegree + 180) / 360;
+                biquadFilter.frequency.value = normAngle * 4000 + 100;
+            }
+        });
+        setupJogPhysicalControl('rightJog', (angleDegree) => {
+            if(biquadFilter) {
+                let normAngle = (angleDegree + 180) / 360;
+                biquadFilter.Q.value = normAngle * 28;
+            }
+        });
+
+        function setupJogPhysicalControl(jogId, callback) {
+            const jog = document.getElementById(jogId);
+            let isDragging = false, startAngle = 0, currentRotation = 0;
+
+            jog.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                const rect = jog.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+            });
+
+            window.addEventListener('mouseup', () => { isDragging = false; });
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const rect = jog.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                
+                let angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+                let angleDiff = angle - startAngle;
+                
+                currentRotation += angleDiff;
+                jog.style.transform = `rotate(${currentRotation}deg)`; // 🌟 마우스에 맞춰 통째로 회전!
+                startAngle = angle;
+
+                callback(currentRotation % 360);
+            });
+
+            jog.extRotation = (deg) => {
+                if(!isDragging) {
+                    currentRotation += deg;
+                    jog.style.transform = `rotate(${currentRotation}deg)`;
+                }
+            };
+        }
+
+        document.getElementById('startMixBtn').addEventListener('click', () => {
+            if (!audioCtx) initDJEngine();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            tracks.forEach(track => track.play());
+            isPlaying = true;
+        });
+
+        document.getElementById('stopMixBtn').addEventListener('click', () => {
+            tracks.forEach(track => track.pause());
+            isPlaying = false;
+        });
+
+        let particles = [];
+        for(let i=0; i<65; i++) {
+            particles.push({
+                angle: (i / 65) * Math.PI * 2,
+                speed: Math.random() * 1.5 + 0.5,
+                baseRadius: Math.random() * 20 + 25
+            });
+        }
+
+        function animateScreens() {
+            requestAnimationFrame(animateScreens);
+
+            let d1 = new Uint8Array(analysers[0].frequencyBinCount); analysers[0].getByteTimeDomainData(d1);
+            let d2 = new Uint8Array(analysers[1].frequencyBinCount); analysers[1].getByteFrequencyData(d2);
+            let d3 = new Uint8Array(analysers[2].frequencyBinCount); analysers[2].getByteFrequencyData(d3);
+
+            if(!isPlaying) { d1.fill(128); d2.fill(0); d3.fill(0); }
+            else {
+                autoRotation += 1.0;
+                document.getElementById('leftJog').extRotation(1.0);
+                document.getElementById('rightJog').extRotation(-0.7);
+            }
+
+            // 스크린 01
+            ctx1.fillStyle = 'rgba(2,3,5,0.25)'; ctx1.fillRect(0, 0, c1.width, c1.height);
+            ctx1.lineWidth = 3; ctx1.strokeStyle = isPlaying ? '#ffca2c' : '#334155';
+            ctx1.shadowBlur = isPlaying ? 15 : 0; ctx1.shadowColor = '#ffca2c';
+            ctx1.beginPath();
+            let slice1 = c1.width / d1.length; let x1 = 0;
+            for(let i=0; i<d1.length; i++) {
+                let v = d1[i]/128.0; let y = c1.height/2 + (v-1.0)*c1.height*1.3;
+                if(i===0) ctx1.moveTo(x1, y); else ctx1.lineTo(x1, y);
+                x1 += slice1;
+            }
+            ctx1.lineTo(c1.width, c1.height/2); ctx1.stroke();
+
+            // 스크린 02
+            ctx2.fillStyle = 'rgba(2,3,5,0.25)'; ctx2.fillRect(0, 0, c2.width, c2.height);
+            ctx2.shadowBlur = 0;
+            let barWidth = (c2.width / d2.length) * 1.5;
+            for(let i=0; i<d2.length; i++) {
+                let h = (d2[i] / 255) * c2.height * 0.9;
+                ctx2.fillStyle = isPlaying ? `hsl(${200 + i*2}, 100%, 50%)` : '#334155';
+                ctx2.fillRect(i*barWidth, c2.height - h, barWidth - 3, h);
+            }
+
+            // 스크린 03
+            ctx3.fillStyle = 'rgba(2,3,5,0.28)'; ctx3.fillRect(0, 0, c3.width, c3.height);
+            ctx3.save(); ctx3.translate(c3.width/2, c3.height/2);
+            ctx3.shadowBlur = isPlaying ? 12 : 0; ctx3.shadowColor = '#e20074';
+            
+            let mSum = 0; for(let i=0; i<d3.length; i++) { mSum += d3[i]; }
+
+            particles.forEach((p, idx) => {
+                let dynAmp = (d3[idx % d3.length] / 255) * 45;
+                let r = p.baseRadius + dynAmp + (isPlaying ? Math.sin(autoRotation * 0.05 + idx) * 8 : 0);
+                
+                let xp = Math.cos(p.angle) * r;
+                let yp = Math.sin(p.angle) * r;
+                let pSize = isPlaying ? (d3[idx % d3.length] / 255) * 5 + 2 : 3;
+
+                ctx3.fillStyle = isPlaying ? '#e20074' : '#334155';
+                ctx3.beginPath(); ctx3.arc(xp, yp, pSize, 0, Math.PI * 2); ctx3.fill();
+
+                if(isPlaying && idx % 3 === 0) {
+                    ctx3.strokeStyle = 'rgba(226, 0, 116, 0.15)'; ctx3.lineWidth = 0.5;
+                    ctx3.beginPath(); ctx3.moveTo(0,0); ctx3.lineTo(xp, yp); ctx3.stroke();
+                }
+            });
+            ctx3.restore();
+
+            updateLEDMeter('meter1', faders[0].value, d1, true);
+            updateLEDMeter('meter2', faders[1].value, d2, false);
+            updateLEDMeter('meter3', faders[2].value, d3, false);
+        }
+
+        function updateLEDMeter(id, faderVal, arr, isTimeDomain) {
+            const meter = document.getElementById(id);
+            const segments = meter.getElementsByClassName('led-segment');
+            let sum = 0;
+            if(isTimeDomain) {
+                for(let i=0; i<arr.length; i++) sum += Math.abs(arr[i] - 128);
+            } else {
+                for(let i=0; i<arr.length; i++) sum += arr[i];
+            }
+            let p = isPlaying ? (sum / arr.length) * faderVal * (isTimeDomain ? 4.5 : 0.4) : 0;
+            const active = Math.min(15, Math.floor(p));
+            for(let i=0; i<15; i++) {
+                const segIndex = 14 - i;
+                if(i < active) {
+                    if(i > 12) segments[segIndex].style.background = '#ef4444';
+                    else if(i > 9) segments[segIndex].style.background = '#ffca2c';
+                    else segments[segIndex].style.background = '#10b981';
+                } else {
+                    segments[segIndex].style.background = '#1a1f2c';
+                }
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            screens.forEach(c => { c.width = c.parentElement.clientWidth; c.height = c.parentElement.clientHeight; });
+        });
+    </script>
+</body>
+</html>
